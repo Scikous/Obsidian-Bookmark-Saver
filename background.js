@@ -66,12 +66,75 @@ async function showNotification(tabId, message, type = 'success') {
  * @param {string[]} names The array of all character note names.
  * @returns {string[]} An array of the full, original note names that were matched.
 */
+// function findAllMatches(title, names) {
+//     // 1. Create a "canonical" version of the title: lowercase and all punctuation
+//     //    and separator characters removed. The 'u' flag enables Unicode awareness.
+//     //    e.g., "Art of Re:Zero" -> "artofrezero"
+//     //    e.g., "ベアトリスのアート"
+//     const canonicalTitle = title.toLowerCase().replace(/[\p{P}\p{Z}]/gu, '');
+
+//     let rawMatches = [];
+
+//     for (const fullName of names) {
+//         let primaryName;
+//         const separator = ' -- ';
+//         const separatorIndex = fullName.indexOf(separator);
+
+//         if (separatorIndex !== -1) {
+//             primaryName = fullName.substring(0, separatorIndex).trim();
+//         } else {
+//             primaryName = fullName.trim();
+//         }
+
+//         if (!primaryName) continue;
+
+//         const aliases = primaryName.split(',').map(alias => alias.trim());
+
+//         const isMatch = aliases.some(alias => {
+//             if (!alias) return false;
+
+//             const aliasWords = alias.toLowerCase().split(' ');
+            
+//             // Create a list of meaningful, canonical words from the alias.
+//             const canonicalAliasWords = aliasWords
+//                 .map(word => word.replace(/[\p{P}\p{Z}]/gu, ''))
+//                 .filter(Boolean); // The filter(Boolean) removes any empty strings.
+
+//             // If an alias has no meaningful words (e.g., it was just "--"), it cannot match.
+//             if (canonicalAliasWords.length === 0) {
+//                 return false;
+//             }
+
+//             // Check if ALL of the meaningful canonical words are present in the canonical title.
+//             return canonicalAliasWords.every(canonicalWord => {
+//                 return canonicalTitle.includes(canonicalWord);
+//             });
+//         });
+
+//         if (isMatch) {
+//             rawMatches.push(fullName);
+//         }
+//     }
+
+//     // --- Filter out less-specific matches (unchanged) ---
+//     if (rawMatches.length <= 1) {
+//         return rawMatches;
+//     }
+
+//     const finalMatches = rawMatches.filter(match => {
+//         const isSubsetOfAnother = rawMatches.some(otherMatch => {
+//             return otherMatch !== match && otherMatch.includes(match);
+//         });
+//         return !isSubsetOfAnother;
+//     });
+
+//     return finalMatches;
+// }
+
 function findAllMatches(title, names) {
     // 1. Create a "canonical" version of the title: lowercase and all punctuation
-    //    and separator characters removed. The 'u' flag enables Unicode awareness.
-    //    e.g., "Art of Re:Zero" -> "artofrezero"
-    //    e.g., "ベアトリスのアート"
-    const canonicalTitle = title.toLowerCase().replace(/[\p{P}\p{Z}]/gu, '');
+    //    and separator characters removed.
+    const canonicalTitle = title.toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '');
 
     let rawMatches = [];
 
@@ -88,25 +151,24 @@ function findAllMatches(title, names) {
 
         if (!primaryName) continue;
 
-        const aliases = primaryName.split(',').map(alias => alias.trim());
+        // THE FIX: Lowercase the primary name *before* splitting into aliases.
+        // This ensures "John Smith" becomes "john smith" before processing.
+        const aliases = primaryName.toLowerCase().split(',').map(alias => alias.trim());
 
         const isMatch = aliases.some(alias => {
             if (!alias) return false;
 
-            const aliasWords = alias.toLowerCase().split(' ');
+            // Split the already-lowercase alias into words.
+            const aliasWords = alias.split(' ');
             
-            // Create a list of meaningful, canonical words from the alias.
             const canonicalAliasWords = aliasWords
-                .map(word => word.replace(/[\p{P}\p{Z}]/gu, ''))
-                .filter(Boolean); // The filter(Boolean) removes any empty strings.
+                .map(word => word.replace(/[\p{P}\p{Z}\s]/gu, ''))
+                .filter(Boolean);
 
-            // If an alias has no meaningful words (e.g., it was just "--"), it cannot match.
-            if (canonicalAliasWords.length === 0) {
-                return false;
-            }
-
-            // Check if ALL of the meaningful canonical words are present in the canonical title.
+            if (canonicalAliasWords.length === 0) return false;
+            
             return canonicalAliasWords.every(canonicalWord => {
+                // No need to lowercase canonicalWord again, as it's already lowercase.
                 return canonicalTitle.includes(canonicalWord);
             });
         });
@@ -116,7 +178,7 @@ function findAllMatches(title, names) {
         }
     }
 
-    // --- Filter out less-specific matches (unchanged) ---
+    // --- Filter out less-specific matches (unchanged and correct) ---
     if (rawMatches.length <= 1) {
         return rawMatches;
     }
@@ -130,6 +192,7 @@ function findAllMatches(title, names) {
 
     return finalMatches;
 }
+
 
 async function appendToNote(tabId, vaultName, notePath, urlToSave) {
     try {
