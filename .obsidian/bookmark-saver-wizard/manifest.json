@@ -1,0 +1,9 @@
+{
+  "id": "bookmark-saver-wizard",
+  "name": "Bookmark Saver Wizard",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "Companion plugin to provide support for saving URLs to as simple bookmarks. Chrome ONLY!",
+  "author": "Scikous",
+  "isDesktopOnly": true
+}

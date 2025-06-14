@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Obsidian Saver Settings</title>
+    <style>
+        body { font-family: sans-serif; padding: 10px 20px; width: 400px; }
+        h1 { font-size: 1.2em; }
+        .setting { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"] { width: 95%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 10px 15px; border: none; background-color: #4CAF50; color: white; border-radius: 4px; cursor: pointer; }
+        #status { margin-top: 15px; font-weight: bold; color: green; }
+    </style>
+</head>
+<body>
+    <h1>Obsidian Saver Settings</h1>
+
+    <div class="setting">
+        <label for="vaultName">Vault Name:</label>
+        <input type="text" id="vaultName">
+    </div>
+
+    <div class="setting">
+        <label for="basePath">Base Folder for Bookmarks:</label>
+        <input type="text" id="basePath">
+    </div>
+
+    <div class="setting">
+        <label for="charactersFolder">Characters Folder Sub-path:</label>
+        <input type="text" id="charactersFolder">
+    </div>
+
+    <div class="setting">
+        <label for="immediateNote">Immediate Note Sub-path:</label>
+        <input type="text" id="immediateNote">
+    </div>
+
+    <div class="setting">
+        <label for="generalNote">General Note Sub-path:</label>
+        <input type="text" id="generalNote">
+    </div>
+
+    <div class="setting">
+        <label for="extraNote">Extra Note Sub-path:</label>
+        <input type="text" id="extraNote">
+    </div>
+
+    <button id="saveBtn">Save Settings</button>
+    <div id="status"></div>
+
+    <script src="../options.js"></script>
+</body>
+</html>

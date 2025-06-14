@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "Obsidian Bookmark Saver",
+  "version": "1.2",
+  "description": "Saves the current tab to designated Obsidian notes.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": ["http://127.0.0.1:8123/"],
+  "action": {
+    "default_popup": "html/popup.html"
+  },
+  "options_page": "html/options.html",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [ "html/helper.html" ],
+      "matches": [ "<all_urls>" ]
+    }
+  ],
+  "commands": {
+    "save-smart": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "Command+Shift+S"
+      },
+      "description": "Save to Obsidian (Smart)"
+    },
+    "save-immediate": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+A",
+        "mac": "Command+Shift+A"
+      },
+      "description": "Save to Obsidian (Immediate)"
+    },
+
+    "save-basic": {
+      "suggested_key": {
+        "default": "Alt+S",
+        "mac": "Alt+S"
+      },
+      "description": "Save to Obsidian (General)"
+    },
+    "save-extra": {
+      "suggested_key": {
+        "default": "Alt+A",
+        "mac": "Alt+A"
+      },
+      "description": "Save to Obsidian (Extra)"
+    }
+  }
+}

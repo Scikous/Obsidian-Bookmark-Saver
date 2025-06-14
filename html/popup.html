@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Obsidian Saver</title>
+    <style>
+        body { font-family: sans-serif; padding: 10px; width: 250px; }
+        button { display: block; width: 100%; padding: 10px; margin-bottom: 8px; border: 1px solid #ccc; background-color: #f0f0f0; border-radius: 4px; cursor: pointer; text-align: left; }
+        button:hover { background-color: #e0e0e0; }
+        hr { border: none; border-top: 1px solid #ddd; margin: 12px 0; }
+        label { font-weight: bold; display: block; margin-bottom: 5px; }
+        input[type="text"] { width: 95%; padding: 8px; margin-bottom: 8px; border: 1px solid #ccc; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <!-- Standard Save Actions -->
+    <button id="smartSaveBtn">Smart Save</button>
+    <button id="immediateSaveBtn">Immediate Save</button>
+    <button id="basicSaveBtn">Basic Save</button>
+    <button id="extraSaveBtn">Extra Save</button>
+    
+    <hr>
+
+    <!-- Targeted Save Section -->
+    <div>
+        <label for="noteQuery">Save to a specific note:</label>
+        <input type="text" id="noteQuery" placeholder="Type note name...">
+        <button id="targetedSaveBtn">Targeted Save</button>
+    </div>
+
+    <script src="../popup.js"></script>
+</body>
+</html>
