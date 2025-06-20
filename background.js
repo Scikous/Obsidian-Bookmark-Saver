@@ -37,13 +37,14 @@ async function showNotification(tabId, message, type = 'success') {
                     backgroundColor: bgColor, color: textColor, borderRadius: '8px',
                     zIndex: '999999999', fontSize: '16px', fontWeight: 'bold',
                     boxShadow: '0 4px 12px rgba(0,0,0,0.15)', transition: 'opacity 0.5s ease-out',
-                    opacity: '1'
+                    opacity: '1',
+                    whiteSpace: 'pre-wrap' // This makes newlines render as line breaks
                 });
                 el.textContent = msg;
                 document.body.appendChild(el);
                 setTimeout(() => {
                     el.style.opacity = '0';
-                    setTimeout(() => el.remove(), 500);
+                    setTimeout(() => el.remove(), 2000);
                 }, 3000);
             },
             args: [message, style.bg, style.text]
@@ -66,75 +67,21 @@ async function showNotification(tabId, message, type = 'success') {
  * @param {string[]} names The array of all character note names.
  * @returns {string[]} An array of the full, original note names that were matched.
 */
-// function findAllMatches(title, names) {
-//     // 1. Create a "canonical" version of the title: lowercase and all punctuation
-//     //    and separator characters removed. The 'u' flag enables Unicode awareness.
-//     //    e.g., "Art of Re:Zero" -> "artofrezero"
-//     //    e.g., "ベアトリスのアート"
-//     const canonicalTitle = title.toLowerCase().replace(/[\p{P}\p{Z}]/gu, '');
 
-//     let rawMatches = [];
-
-//     for (const fullName of names) {
-//         let primaryName;
-//         const separator = ' -- ';
-//         const separatorIndex = fullName.indexOf(separator);
-
-//         if (separatorIndex !== -1) {
-//             primaryName = fullName.substring(0, separatorIndex).trim();
-//         } else {
-//             primaryName = fullName.trim();
-//         }
-
-//         if (!primaryName) continue;
-
-//         const aliases = primaryName.split(',').map(alias => alias.trim());
-
-//         const isMatch = aliases.some(alias => {
-//             if (!alias) return false;
-
-//             const aliasWords = alias.toLowerCase().split(' ');
-            
-//             // Create a list of meaningful, canonical words from the alias.
-//             const canonicalAliasWords = aliasWords
-//                 .map(word => word.replace(/[\p{P}\p{Z}]/gu, ''))
-//                 .filter(Boolean); // The filter(Boolean) removes any empty strings.
-
-//             // If an alias has no meaningful words (e.g., it was just "--"), it cannot match.
-//             if (canonicalAliasWords.length === 0) {
-//                 return false;
-//             }
-
-//             // Check if ALL of the meaningful canonical words are present in the canonical title.
-//             return canonicalAliasWords.every(canonicalWord => {
-//                 return canonicalTitle.includes(canonicalWord);
-//             });
-//         });
-
-//         if (isMatch) {
-//             rawMatches.push(fullName);
-//         }
-//     }
-
-//     // --- Filter out less-specific matches (unchanged) ---
-//     if (rawMatches.length <= 1) {
-//         return rawMatches;
-//     }
-
-//     const finalMatches = rawMatches.filter(match => {
-//         const isSubsetOfAnother = rawMatches.some(otherMatch => {
-//             return otherMatch !== match && otherMatch.includes(match);
-//         });
-//         return !isSubsetOfAnother;
-//     });
-
-//     return finalMatches;
-// }
-
+/**
+ * Finds all matching note names by treating the title and names as collections
+ * of words, preventing false positives from substrings inside other words.
+ * @param {string} title The page title or user query to search within.
+ * @param {string[]} names The array of all character/show note names.
+ * @returns {string[]} An array of the full, original note names that were matched.
+ */
 function findAllMatches(title, names) {
-    // 1. Create a "canonical" version of the title: lowercase and all punctuation
-    //    and separator characters removed.
-    const canonicalTitle = title.toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '');
+    // 1. Tokenize the title: Split it into an array of unique, lowercase words.
+    //    The regex splits on any punctuation, space, or separator.
+    //    Using a Set automatically handles uniqueness for efficiency.
+    const titleWords = new Set(
+        title.toLowerCase().split(/[\p{P}\p{Z}\s]/gu).filter(Boolean)
+    );
 
     let rawMatches = [];
 
@@ -151,26 +98,19 @@ function findAllMatches(title, names) {
 
         if (!primaryName) continue;
 
-        // THE FIX: Lowercase the primary name *before* splitting into aliases.
-        // This ensures "John Smith" becomes "john smith" before processing.
         const aliases = primaryName.toLowerCase().split(',').map(alias => alias.trim());
 
         const isMatch = aliases.some(alias => {
             if (!alias) return false;
 
-            // Split the already-lowercase alias into words.
-            const aliasWords = alias.split(' ');
-            
-            const canonicalAliasWords = aliasWords
-                .map(word => word.replace(/[\p{P}\p{Z}\s]/gu, ''))
-                .filter(Boolean);
+            // 2. Tokenize the alias into its component words.
+            const aliasWords = alias.split(/[\p{P}\p{Z}\s]/gu).filter(Boolean);
 
-            if (canonicalAliasWords.length === 0) return false;
+            if (aliasWords.length === 0) return false;
             
-            return canonicalAliasWords.every(canonicalWord => {
-                // No need to lowercase canonicalWord again, as it's already lowercase.
-                return canonicalTitle.includes(canonicalWord);
-            });
+            // 3. The new, crucial check:
+            //    Ensure that EVERY word from the alias exists in the title's word set.
+            return aliasWords.every(word => titleWords.has(word));
         });
 
         if (isMatch) {
@@ -178,7 +118,7 @@ function findAllMatches(title, names) {
         }
     }
 
-    // --- Filter out less-specific matches (unchanged and correct) ---
+    // --- Step 4: Filter out less-specific matches (this logic is still valuable) ---
     if (rawMatches.length <= 1) {
         return rawMatches;
     }
@@ -192,6 +132,80 @@ function findAllMatches(title, names) {
 
     return finalMatches;
 }
+
+
+
+
+
+/**
+ * Finds the single "closest" or "best guess" match for a user's query.
+ * Uses a scoring system to prioritize better matches.
+ * @param {string} query The user's typed search query.
+ * @param {string[]} names The array of all character/show note names.
+ * @returns {string|null} The full, original name of the best-matched note, or null.
+ */
+function findClosestMatch(query, names) {
+    const lowerCaseQuery = query.toLowerCase();
+    let scoredMatches = [];
+
+    for (const fullName of names) {
+        let primaryName;
+        const separator = ' -- ';
+        const separatorIndex = fullName.indexOf(separator);
+
+        if (separatorIndex !== -1) {
+            primaryName = fullName.substring(0, separatorIndex).trim();
+        } else {
+            primaryName = fullName.trim();
+        }
+
+        if (!primaryName) continue;
+
+        const lowerCasePrimaryName = primaryName.toLowerCase();
+        let score = 0;
+
+        // Score the match
+        if (lowerCasePrimaryName.startsWith(lowerCaseQuery)) {
+            // A "starts with" match is very strong.
+            score = 2;
+        } else if (lowerCasePrimaryName.includes(lowerCaseQuery)) {
+            // A general "includes" match is weaker, but still a match.
+            score = 1;
+        }
+        
+        // Also check aliases
+        const aliases = lowerCasePrimaryName.split(',').map(a => a.trim());
+        if (!aliases.includes(lowerCasePrimaryName)) {
+             for (const alias of aliases) {
+                if (alias.startsWith(lowerCaseQuery)) score = Math.max(score, 2);
+                else if (alias.includes(lowerCaseQuery)) score = Math.max(score, 1);
+            }
+        }
+
+        if (score > 0) {
+            scoredMatches.push({ name: fullName, score: score, length: lowerCasePrimaryName.length });
+        }
+    }
+
+    if (scoredMatches.length === 0) {
+        return null; // No matches found
+    }
+
+    // Sort to find the best match:
+    // 1. Higher score is better.
+    // 2. If scores are equal, a shorter name is a "closer" match.
+    scoredMatches.sort((a, b) => {
+        if (a.score !== b.score) {
+            return b.score - a.score; // Sort by score descending
+        }
+        return a.length - b.length; // Then by length ascending
+    });
+
+    // The best match is the first item in the sorted list.
+    return scoredMatches[0].name;
+}
+
+
 
 
 async function appendToNote(tabId, vaultName, notePath, urlToSave) {
@@ -222,45 +236,73 @@ async function appendToNote(tabId, vaultName, notePath, urlToSave) {
 async function handleSmartSave(tab) {
     const config = await getConfig();
     try {
-        // Call the new, more powerful endpoint
+        // 1. Fetch all note names from the plugin
         const response = await fetch('http://127.0.0.1:8123/get-all-notes');
         if (!response.ok) throw new Error(`Cannot connect to Obsidian plugin (HTTP ${response.status})`);
         
-        // The response now contains two lists
         const { characters, shows } = await response.json();
         
-        // Find matches in each list separately
+        // Find all matches in both lists
         const matchedCharacterNames = findAllMatches(tab.title, characters);
         const matchedShowNames = findAllMatches(tab.title, shows);
 
-        // --- Step 1: Save to the General note ---
-        const generalResult = await appendToNote(tab.id, config.vaultName, `${config.basePath}/${config.generalNote}`, tab.url);
+        // --- 2. Perform all save operations and collect detailed results ---
+        let savedNoteNames = [];
+        let duplicateCount = 0;
+        let errorCount = 0;
+
+        // A. Handle the General note
+        const generalNotePath = `${config.basePath}/${config.generalNote}`;
+        const generalResult = await appendToNote(tab.id, config.vaultName, generalNotePath, tab.url);
+        if (generalResult === 'SAVED') {
+            savedNoteNames.push(config.generalNote); // Add the name of the General note
+        } else if (generalResult === 'DUPLICATE') {
+            duplicateCount++;
+        } else if (generalResult === 'ERROR') {
+            errorCount++;
+        }
+        
+        // B. Handle all matched character and show notes
+        const specificSavePromises = [
+            ...matchedCharacterNames.map(async (name) => {
+                const path = `${config.basePath}/${config.charactersFolder}/${name}`;
+                const status = await appendToNote(tab.id, config.vaultName, path, tab.url);
+                return { name, status }; // Return an object with the name and status
+            }),
+            ...matchedShowNames.map(async (name) => {
+                const path = `${config.basePath}/${config.showsFolder}/${name}`;
+                const status = await appendToNote(tab.id, config.vaultName, path, tab.url);
+                return { name, status }; // Return an object with the name and status
+            })
+        ];
+
+        // Wait for all specific saves to complete
+        const specificResults = await Promise.all(specificSavePromises);
+
+        // Process the results of the specific saves
+        specificResults.forEach(result => {
+            if (result.status === 'SAVED') {
+                savedNoteNames.push(result.name);
+            } else if (result.status === 'DUPLICATE') {
+                duplicateCount++;
+            } else if (result.status === 'ERROR') {
+                errorCount++;
+            }
+        });
+
         console.log(tab.title);
-        // --- Step 2: Create save promises for all matches ---
-        const characterSavePromises = (matchedCharacterNames || []).map(name => {
-            const path = `${config.basePath}/${config.charactersFolder}/${name}`;
-            return appendToNote(tab.id, config.vaultName, path, tab.url);
-        });
-
-        const showSavePromises = (matchedShowNames || []).map(name => {
-            const path = `${config.basePath}/${config.showsFolder}/${name}`;
-            return appendToNote(tab.id, config.vaultName, path, tab.url);
-        });
-
-        // Wait for all character and show saves to complete
-        const specificResults = await Promise.all([...characterSavePromises, ...showSavePromises]);
-
-        // --- Step 3: Aggregate all results for the final notification ---
-        const allResults = [generalResult, ...specificResults];
-        const savedCount = allResults.filter(r => r === 'SAVED').length;
-        const duplicateCount = allResults.filter(r => r === 'DUPLICATE').length;
-        const errorCount = allResults.filter(r => r === 'ERROR').length;
-
+        // --- 3. Craft the final notification based on the collected results ---
         if (errorCount > 0) {
-            showNotification(tab.id, 'Error: Could not save one or more links.', 'error');
-        } else if (savedCount > 0) {
-            showNotification(tab.id, `Saved to Obsidian (${savedCount} new)!`, 'success');
+            showNotification(tab.id, 'Error: One or more saves failed. See console.', 'error');
+        } else if (savedNoteNames.length > 0) {
+            // THE NEW NOTIFICATION: List all the notes it was saved to.
+            //could potentially break
+            const notificationMessage = `Saved to:\n${savedNoteNames.map((name, index) => `${index + 1}. ${name}`).join('\n')}`;
+            //safer but slightly less readable
+            // const notificationMessage = `(${savedNoteNames.length})Saved to:\n${savedNoteNames.join('\n')}`;
+            showNotification(tab.id, notificationMessage, 'success');
         } else if (duplicateCount > 0) {
+            // This now correctly reports that everything already existed.
             showNotification(tab.id, `Already exists in Obsidian.`, 'warning');
         }
 
@@ -269,8 +311,6 @@ async function handleSmartSave(tab) {
         showNotification(tab.id, 'Error: Could not save. Is Obsidian running?', 'error');
     }
 }
-
-
 async function handleImmediateSave(tab) {
     const config = await getConfig();
     const immediateNotePath = `${config.basePath}/${config.immediateNote}`;
@@ -314,7 +354,8 @@ async function handleExtraSave(tab) {
 }
 
 
-// --- NEW ACTION HANDLER FOR TARGETED SAVE ---
+
+//save to specific note
 async function handleTargetedSave(tab, query) {
     const config = await getConfig();
     try {
@@ -322,40 +363,42 @@ async function handleTargetedSave(tab, query) {
         if (!response.ok) throw new Error("Could not fetch notes from Obsidian.");
 
         const { characters, shows } = await response.json();
-        const matchedNames = findAllMatches(query, [...characters, ...shows]);
+        
+        // --- THE KEY CHANGE: Use the new "fuzzy" matching function ---
+        const matchedName = findClosestMatch(query, [...characters, ...shows]);
 
-        if (!matchedNames || matchedNames.length === 0) {
+        // If the fuzzy search still finds nothing, notify the user.
+        if (!matchedName) {
             showNotification(tab.id, `Note not found for: "${query}"`, 'warning');
             return;
         }
 
-        const noteToSaveTo = matchedNames[0];
+        // The rest of the logic proceeds with the single best match.
         let targetFolder;
-
-        if (characters.includes(noteToSaveTo)) {
+        if (characters.includes(matchedName)) {
             targetFolder = config.charactersFolder;
-        } else if (shows.includes(noteToSaveTo)) {
+        } else if (shows.includes(matchedName)) {
             targetFolder = config.showsFolder;
         } else {
-            throw new Error(`Matched note "${noteToSaveTo}" not found in any category.`);
+            throw new Error(`Matched note "${matchedName}" not found in any category.`);
         }
 
-        const notePath = `${config.basePath}/${targetFolder}/${noteToSaveTo}`;
+        const notePath = `${config.basePath}/${targetFolder}/${matchedName}`;
         const result = await appendToNote(tab.id, config.vaultName, notePath, tab.url);
 
         if (result === 'SAVED') {
-            showNotification(tab.id, `Saved to: ${noteToSaveTo}`, 'success');
+            showNotification(tab.id, `Saved to: ${matchedName}`, 'success');
         } else if (result === 'DUPLICATE') {
-            showNotification(tab.id, `Already exists in: ${noteToSaveTo}`, 'warning');
+            showNotification(tab.id, `Already exists in: ${matchedName}`, 'warning');
         } else {
             throw new Error("Failed to save to the specified note.");
         }
+
     } catch (e) {
         console.error("Error during Targeted Save:", e);
         showNotification(tab.id, 'Error: Could not perform targeted save.', 'error');
     }
 }
-
 
 
 // ===================================================================

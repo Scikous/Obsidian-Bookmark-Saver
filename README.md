@@ -82,7 +82,7 @@ This is the primary action. It saves the URL to your general bookmarks note and 
 #### Targeted Save (Manual Override)
 This is the perfect solution for pages where the title doesn't contain the information you need to sort it automatically.
 1.  Click the extension icon in your toolbar.
-2.  In the popup, type a name into the "Save to a specific note" input field.
+2.  In the popup, type a name into the "Save to a specific note" input field. The name of the note can be "close enough", does not need to be the full note name.
 3.  Click the "Targeted Save" button or press Enter.
 4.  The extension will find the best match for your query in both your `Characters` and `Shows` folders and save the link directly to that note.
 
