@@ -60,57 +60,24 @@ async function showNotification(tabId, message, type = 'success') {
 //               2. CORE LOGIC
 //
 // ===================================================================
-
-/**
- * Finds all matching note names in a title and filters out less-specific duplicates.
- * @param {string} title The page title to search within.
- * @param {string[]} names The array of all character note names.
- * @returns {string[]} An array of the full, original note names that were matched.
-*/
-
-/**
- * Finds all matching note names by treating the title and names as collections
- * of words, preventing false positives from substrings inside other words.
- * @param {string} title The page title or user query to search within.
- * @param {string[]} names The array of all character/show note names.
- * @returns {string[]} An array of the full, original note names that were matched.
- */
 function findAllMatches(title, names) {
-    // 1. Tokenize the title: Split it into an array of unique, lowercase words.
-    //    The regex splits on any punctuation, space, or separator.
-    //    Using a Set automatically handles uniqueness for efficiency.
-    const titleWords = new Set(
-        title.toLowerCase().split(/[\p{P}\p{Z}\s]/gu).filter(Boolean)
-    );
-
+    const canonicalTitleWords = title.toLowerCase().split(/[\p{P}\p{Z}\s]+/u).filter(Boolean);
     let rawMatches = [];
 
     for (const fullName of names) {
         let primaryName;
         const separator = ' -- ';
         const separatorIndex = fullName.indexOf(separator);
-
-        if (separatorIndex !== -1) {
-            primaryName = fullName.substring(0, separatorIndex).trim();
-        } else {
-            primaryName = fullName.trim();
-        }
-
+        if (separatorIndex !== -1) { primaryName = fullName.substring(0, separatorIndex).trim(); } else { primaryName = fullName.trim(); }
         if (!primaryName) continue;
 
         const aliases = primaryName.toLowerCase().split(',').map(alias => alias.trim());
 
         const isMatch = aliases.some(alias => {
             if (!alias) return false;
-
-            // 2. Tokenize the alias into its component words.
-            const aliasWords = alias.split(/[\p{P}\p{Z}\s]/gu).filter(Boolean);
-
-            if (aliasWords.length === 0) return false;
-            
-            // 3. The new, crucial check:
-            //    Ensure that EVERY word from the alias exists in the title's word set.
-            return aliasWords.every(word => titleWords.has(word));
+            const canonicalAliasWords = alias.split(' ').map(word => word.replace(/[\p{P}\p{Z}\s]/gu, '')).filter(Boolean);
+            if (canonicalAliasWords.length === 0) return false;
+            return canonicalAliasWords.every(word => canonicalTitleWords.includes(word));
         });
 
         if (isMatch) {
@@ -118,94 +85,103 @@ function findAllMatches(title, names) {
         }
     }
 
-    // --- Step 4: Filter out less-specific matches (this logic is still valuable) ---
-    if (rawMatches.length <= 1) {
-        return rawMatches;
+    if (rawMatches.length <= 1) return rawMatches;
+
+    const groupedMatches = new Map();
+    for (const match of rawMatches) {
+        const separatorIndex = match.indexOf(' -- ');
+        const primaryName = (separatorIndex !== -1 ? match.substring(0, separatorIndex) : match).trim();
+        const canonicalPrimary = primaryName.toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '');
+        if (!groupedMatches.has(canonicalPrimary)) groupedMatches.set(canonicalPrimary, []);
+        groupedMatches.get(canonicalPrimary).push(match);
     }
 
-    const finalMatches = rawMatches.filter(match => {
-        const isSubsetOfAnother = rawMatches.some(otherMatch => {
-            return otherMatch !== match && otherMatch.includes(match);
-        });
-        return !isSubsetOfAnother;
-    });
+    const finalMatches = [];
+    for (const group of groupedMatches.values()) {
+        if (group.length === 1) {
+            finalMatches.push(group[0]);
+            continue;
+        }
 
+        const highConfidenceMatches = [];
+        for (const note of group) {
+            const separatorIndex = note.indexOf(' -- ');
+            if (separatorIndex === -1) continue;
+            const details = note.substring(separatorIndex + 4).trim();
+            const detailWords = details.toLowerCase().split(/[\p{P}\p{Z}\s]+/u).filter(Boolean);
+            const detailMatch = detailWords.some(word => canonicalTitleWords.includes(word));
+            if (detailMatch) highConfidenceMatches.push(note);
+        }
+
+        if (highConfidenceMatches.length > 0) {
+            finalMatches.push(...highConfidenceMatches);
+        } else {
+            finalMatches.push(...group);
+        }
+    }
     return finalMatches;
 }
 
 
-
-
-
 /**
- * Finds the single "closest" or "best guess" match for a user's query.
- * Uses a scoring system to prioritize better matches.
+ * Finds the single "closest" match for a user's query, robust against
+ * spacing and punctuation.
  * @param {string} query The user's typed search query.
  * @param {string[]} names The array of all character/show note names.
  * @returns {string|null} The full, original name of the best-matched note, or null.
  */
 function findClosestMatch(query, names) {
-    const lowerCaseQuery = query.toLowerCase();
+    // 1. Create a canonical version of the user's query.
+    // e.g., "johnsmith" -> "johnsmith"
+    const canonicalQuery = query.toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '');
+    if (!canonicalQuery) return null;
+
     let scoredMatches = [];
 
     for (const fullName of names) {
         let primaryName;
         const separator = ' -- ';
         const separatorIndex = fullName.indexOf(separator);
-
-        if (separatorIndex !== -1) {
-            primaryName = fullName.substring(0, separatorIndex).trim();
-        } else {
-            primaryName = fullName.trim();
-        }
-
+        if (separatorIndex !== -1) { primaryName = fullName.substring(0, separatorIndex).trim(); } else { primaryName = fullName.trim(); }
         if (!primaryName) continue;
 
+        // 2. Create a canonical version of the note's primary name and aliases.
         const lowerCasePrimaryName = primaryName.toLowerCase();
+        const canonicalPrimaryName = lowerCasePrimaryName.replace(/[\p{P}\p{Z}\s]/gu, '');
+        
         let score = 0;
 
-        // Score the match
-        if (lowerCasePrimaryName.startsWith(lowerCaseQuery)) {
-            // A "starts with" match is very strong.
-            score = 2;
-        } else if (lowerCasePrimaryName.includes(lowerCaseQuery)) {
-            // A general "includes" match is weaker, but still a match.
-            score = 1;
+        // 3. Score the match using the canonical versions.
+        if (canonicalPrimaryName.startsWith(canonicalQuery)) {
+            score = 2; // "starts with" is a strong match
+        } else if (canonicalPrimaryName.includes(canonicalQuery)) {
+            score = 1; // "includes" is a weaker match
         }
         
-        // Also check aliases
         const aliases = lowerCasePrimaryName.split(',').map(a => a.trim());
         if (!aliases.includes(lowerCasePrimaryName)) {
              for (const alias of aliases) {
-                if (alias.startsWith(lowerCaseQuery)) score = Math.max(score, 2);
-                else if (alias.includes(lowerCaseQuery)) score = Math.max(score, 1);
+                const canonicalAlias = alias.replace(/[\p{P}\p{Z}\s]/gu, '');
+                if (canonicalAlias.startsWith(canonicalQuery)) score = Math.max(score, 2);
+                else if (canonicalAlias.includes(canonicalQuery)) score = Math.max(score, 1);
             }
         }
 
         if (score > 0) {
-            scoredMatches.push({ name: fullName, score: score, length: lowerCasePrimaryName.length });
+            scoredMatches.push({ name: fullName, score: score, length: canonicalPrimaryName.length });
         }
     }
 
-    if (scoredMatches.length === 0) {
-        return null; // No matches found
-    }
+    if (scoredMatches.length === 0) return null;
 
-    // Sort to find the best match:
-    // 1. Higher score is better.
-    // 2. If scores are equal, a shorter name is a "closer" match.
+    // Sort to find the best match (by score, then by length).
     scoredMatches.sort((a, b) => {
-        if (a.score !== b.score) {
-            return b.score - a.score; // Sort by score descending
-        }
-        return a.length - b.length; // Then by length ascending
+        if (a.score !== b.score) return b.score - a.score;
+        return a.length - b.length;
     });
 
-    // The best match is the first item in the sorted list.
     return scoredMatches[0].name;
 }
-
-
 
 
 async function appendToNote(tabId, vaultName, notePath, urlToSave) {
