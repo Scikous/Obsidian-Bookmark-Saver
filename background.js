@@ -60,8 +60,17 @@ async function showNotification(tabId, message, type = 'success') {
 //               2. CORE LOGIC
 //
 // ===================================================================
+/**
+ * Finds all matching note names using a "whole word" matching strategy. This version
+ * correctly tokenizes names with embedded punctuation (e.g., Monkey D. Luffy, Ellen-Sensei).
+ * @param {string} title The page title to search within.
+ * @param {string[]} names The array of all character/show note names.
+ * @returns {string[]} An array of the most relevant full note names.
+ */
 function findAllMatches(title, names) {
-    const canonicalTitleWords = title.toLowerCase().split(/[\p{P}\p{Z}\s]+/u).filter(Boolean);
+    // 1. Tokenize the title into an array of clean, canonical words.
+    const canonicalTitleWords = title.toLowerCase().split(/[\p{P}\p{Z}\p{S}\s]+/u).filter(Boolean);
+
     let rawMatches = [];
 
     for (const fullName of names) {
@@ -75,8 +84,14 @@ function findAllMatches(title, names) {
 
         const isMatch = aliases.some(alias => {
             if (!alias) return false;
-            const canonicalAliasWords = alias.split(' ').map(word => word.replace(/[\p{P}\p{Z}\s]/gu, '')).filter(Boolean);
+            
+            // 2. THE FIX: Tokenize the alias using the EXACT SAME regex as the title.
+            // This correctly handles "Monkey D. Luffy" -> ["Monkey", "D", "Luffy"] and "Ellen-Sensei" -> ["ellen", "sensei"].
+            const canonicalAliasWords = alias.split(/[\p{P}\p{Z}\p{S}\s]+/u).filter(Boolean);
+            
             if (canonicalAliasWords.length === 0) return false;
+            
+            // 3. The check remains the same, but is now much more reliable.
             return canonicalAliasWords.every(word => canonicalTitleWords.includes(word));
         });
 
@@ -87,11 +102,14 @@ function findAllMatches(title, names) {
 
     if (rawMatches.length <= 1) return rawMatches;
 
+    // --- Stage 2: Resolve Ambiguity (Tie-Breaker) ---
+    // The logic here is already robust and does not need to be changed,
+    // as it already uses the correct tokenization for the "details" part.
     const groupedMatches = new Map();
     for (const match of rawMatches) {
         const separatorIndex = match.indexOf(' -- ');
         const primaryName = (separatorIndex !== -1 ? match.substring(0, separatorIndex) : match).trim();
-        const canonicalPrimary = primaryName.toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '');
+        const canonicalPrimary = primaryName.toLowerCase().replace(/[\p{P}\p{Z}\p{S}\s]/gu, '');
         if (!groupedMatches.has(canonicalPrimary)) groupedMatches.set(canonicalPrimary, []);
         groupedMatches.get(canonicalPrimary).push(match);
     }
@@ -108,7 +126,7 @@ function findAllMatches(title, names) {
             const separatorIndex = note.indexOf(' -- ');
             if (separatorIndex === -1) continue;
             const details = note.substring(separatorIndex + 4).trim();
-            const detailWords = details.toLowerCase().split(/[\p{P}\p{Z}\s]+/u).filter(Boolean);
+            const detailWords = details.toLowerCase().split(/[\p{P}\p{Z}\p{S}\s]+/u).filter(Boolean);
             const detailMatch = detailWords.some(word => canonicalTitleWords.includes(word));
             if (detailMatch) highConfidenceMatches.push(note);
         }
@@ -122,7 +140,6 @@ function findAllMatches(title, names) {
     return finalMatches;
 }
 
-
 /**
  * Finds the single "closest" match for a user's query, robust against
  * spacing and punctuation.
@@ -132,7 +149,7 @@ function findAllMatches(title, names) {
  */
 function findClosestMatch(query, names) {
     // 1. Create a canonical version of the user's query.
-    // e.g., "johnsmith" -> "johnsmith"
+    // e.g., "john smith" -> "johnsmith"
     const canonicalQuery = query.toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '');
     if (!canonicalQuery) return null;
 
