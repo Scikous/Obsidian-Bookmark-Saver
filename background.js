@@ -61,97 +61,66 @@ async function showNotification(tabId, message, type = 'success') {
 //
 // ===================================================================
 /**
- * Finds all matching note names using a "whole word" matching strategy. This version
- * correctly tokenizes names with embedded punctuation (e.g., Monkey D. Luffy, Ellen-Sensei).
+ * Finds all matching note names using a strict, context-aware process.
+ * A match requires BOTH a character/show name AND a source material name to be
+ * present in the title, unless the note is marked with "-- OGFAV".
  * @param {string} title The page title to search within.
  * @param {string[]} names The array of all character/show note names.
  * @returns {string[]} An array of the most relevant full note names.
  */
+
 function findAllMatches(title, names) {
-    // 1. Tokenize the title into an array of clean, canonical words.
-    const canonicalTitleWords = title.toLowerCase().split(/[\p{P}\p{Z}\p{S}\s]+/u).filter(Boolean);
-
-    let rawMatches = [];
-
+    const canonicalTitleFlat = title.toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '');
+    const canonicalTitleWords = title.toLowerCase().split(/[\p{P}\p{Z}\s]+/u).filter(Boolean);
+    let finalMatches = [];
     for (const fullName of names) {
         let primaryName;
         const separator = ' -- ';
         const separatorIndex = fullName.indexOf(separator);
         if (separatorIndex !== -1) { primaryName = fullName.substring(0, separatorIndex).trim(); } else { primaryName = fullName.trim(); }
         if (!primaryName) continue;
-
-        const aliases = primaryName.toLowerCase().split(',').map(alias => alias.trim());
-
-        const isMatch = aliases.some(alias => {
-            if (!alias) return false;
-            
-            // 2. THE FIX: Tokenize the alias using the EXACT SAME regex as the title.
-            // This correctly handles "Monkey D. Luffy" -> ["Monkey", "D", "Luffy"] and "Ellen-Sensei" -> ["ellen", "sensei"].
-            const canonicalAliasWords = alias.split(/[\p{P}\p{Z}\p{S}\s]+/u).filter(Boolean);
-            
-            if (canonicalAliasWords.length === 0) return false;
-            
-            // 3. The check remains the same, but is now much more reliable.
-            return canonicalAliasWords.every(word => canonicalTitleWords.includes(word));
-        });
-
-        if (isMatch) {
-            rawMatches.push(fullName);
-        }
-    }
-
-    if (rawMatches.length <= 1) return rawMatches;
-
-    // --- Stage 2: Resolve Ambiguity (Tie-Breaker) ---
-    // The logic here is already robust and does not need to be changed,
-    // as it already uses the correct tokenization for the "details" part.
-    const groupedMatches = new Map();
-    for (const match of rawMatches) {
-        const separatorIndex = match.indexOf(' -- ');
-        const primaryName = (separatorIndex !== -1 ? match.substring(0, separatorIndex) : match).trim();
-        const canonicalPrimary = primaryName.toLowerCase().replace(/[\p{P}\p{Z}\p{S}\s]/gu, '');
-        if (!groupedMatches.has(canonicalPrimary)) groupedMatches.set(canonicalPrimary, []);
-        groupedMatches.get(canonicalPrimary).push(match);
-    }
-
-    const finalMatches = [];
-    for (const group of groupedMatches.values()) {
-        if (group.length === 1) {
-            finalMatches.push(group[0]);
+        if (fullName.toUpperCase().includes('-- OGFAV')) {
+            const aliases = primaryName.toLowerCase().split(',').map(alias => alias.trim());
+            const isOgFavMatch = aliases.some(alias => {
+                if (!alias) return false;
+                const canonicalAliasWords = alias.split(/[\p{P}\p{Z}\s]+/u).filter(Boolean);
+                return canonicalAliasWords.length > 0 && canonicalAliasWords.every(word => canonicalTitleWords.includes(word));
+            });
+            if (isOgFavMatch) finalMatches.push(fullName);
             continue;
         }
-
-        const highConfidenceMatches = [];
-        for (const note of group) {
-            const separatorIndex = note.indexOf(' -- ');
-            if (separatorIndex === -1) continue;
-            const details = note.substring(separatorIndex + 4).trim();
-            const detailWords = details.toLowerCase().split(/[\p{P}\p{Z}\p{S}\s]+/u).filter(Boolean);
-            const detailMatch = detailWords.some(word => canonicalTitleWords.includes(word));
-            if (detailMatch) highConfidenceMatches.push(note);
-        }
-
-        if (highConfidenceMatches.length > 0) {
-            finalMatches.push(...highConfidenceMatches);
-        } else {
-            finalMatches.push(...group);
+        const characterAliases = primaryName.toLowerCase().split(',').map(alias => alias.trim());
+        const isCharacterMatch = characterAliases.some(alias => {
+            if (!alias) return false;
+            const canonicalAliasPhrase = alias.replace(/[\p{P}\p{Z}\s]/gu, '');
+            return canonicalAliasPhrase && canonicalTitleFlat.includes(canonicalAliasPhrase);
+        });
+        if (!isCharacterMatch) continue;
+        const details = (separatorIndex !== -1 ? fullName.substring(separatorIndex + separator.length) : '').trim();
+        if (!details) continue;
+        const sourceAliases = details.toLowerCase().split(',').map(alias => alias.trim());
+        const isSourceMatch = sourceAliases.some(alias => {
+            if (!alias) return false;
+            const canonicalSourcePhrase = alias.replace(/[\p{P}\p{Z}\s]/gu, '');
+            return canonicalSourcePhrase && canonicalTitleFlat.includes(canonicalSourcePhrase);
+        });
+        if (isCharacterMatch && isSourceMatch) {
+            finalMatches.push(fullName);
         }
     }
     return finalMatches;
 }
+// /**
+//  * Finds the single "closest" match for a user's query, robust against
+//  * spacing and punctuation.
+//  * @param {string} query The user's typed search query.
+//  * @param {string[]} names The array of all character/show note names.
+//  * @returns {string|null} The full, original name of the best-matched note, or null.
+//  */
 
-/**
- * Finds the single "closest" match for a user's query, robust against
- * spacing and punctuation.
- * @param {string} query The user's typed search query.
- * @param {string[]} names The array of all character/show note names.
- * @returns {string|null} The full, original name of the best-matched note, or null.
- */
 function findClosestMatch(query, names) {
-    // 1. Create a canonical version of the user's query.
-    // e.g., "john smith" -> "johnsmith"
-    const canonicalQuery = query.toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '');
-    if (!canonicalQuery) return null;
+    const canonicalQueryWords = query.toLowerCase().split(/[\p{P}\p{Z}\s]+/u).filter(Boolean);
+    if (canonicalQueryWords.length === 0) return null;
 
     let scoredMatches = [];
 
@@ -162,30 +131,30 @@ function findClosestMatch(query, names) {
         if (separatorIndex !== -1) { primaryName = fullName.substring(0, separatorIndex).trim(); } else { primaryName = fullName.trim(); }
         if (!primaryName) continue;
 
-        // 2. Create a canonical version of the note's primary name and aliases.
-        const lowerCasePrimaryName = primaryName.toLowerCase();
-        const canonicalPrimaryName = lowerCasePrimaryName.replace(/[\p{P}\p{Z}\s]/gu, '');
-        
         let score = 0;
 
-        // 3. Score the match using the canonical versions.
-        if (canonicalPrimaryName.startsWith(canonicalQuery)) {
-            score = 2; // "starts with" is a strong match
-        } else if (canonicalPrimaryName.includes(canonicalQuery)) {
-            score = 1; // "includes" is a weaker match
+        // --- Test 1: Check against the full note name (e.g., "John Smith -- John's Adventures") ---
+        const canonicalFullNameWords = fullName.toLowerCase().split(/[\p{P}\p{Z}\s]+/u).filter(Boolean);
+        if (canonicalQueryWords.every(qWord => canonicalFullNameWords.includes(qWord))) {
+            // A match against the full name is a very strong signal.
+            // Give a higher score if the word counts are identical (an exact match).
+            score = Math.max(score, canonicalFullNameWords.length === canonicalQueryWords.length ? 3 : 2);
         }
-        
-        const aliases = lowerCasePrimaryName.split(',').map(a => a.trim());
-        if (!aliases.includes(lowerCasePrimaryName)) {
-             for (const alias of aliases) {
-                const canonicalAlias = alias.replace(/[\p{P}\p{Z}\s]/gu, '');
-                if (canonicalAlias.startsWith(canonicalQuery)) score = Math.max(score, 2);
-                else if (canonicalAlias.includes(canonicalQuery)) score = Math.max(score, 1);
+
+        // --- Test 2: Check against just the primary name's aliases (e.g., "John Smith") ---
+        const aliases = primaryName.toLowerCase().split(',').map(a => a.trim());
+        for (const alias of aliases) {
+            const canonicalAliasWords = alias.split(/[\p{P}\p{Z}\s]+/u).filter(Boolean);
+            if (canonicalAliasWords.length === 0) continue;
+
+            if (canonicalQueryWords.every(qWord => canonicalAliasWords.includes(qWord))) {
+                // Matching the primary name is good, but less specific than the full name.
+                score = Math.max(score, canonicalAliasWords.length === canonicalQueryWords.length ? 2 : 1);
             }
         }
 
         if (score > 0) {
-            scoredMatches.push({ name: fullName, score: score, length: canonicalPrimaryName.length });
+            scoredMatches.push({ name: fullName, score, length: fullName.length });
         }
     }
 
@@ -199,7 +168,6 @@ function findClosestMatch(query, names) {
 
     return scoredMatches[0].name;
 }
-
 
 async function appendToNote(tabId, vaultName, notePath, urlToSave) {
     try {
@@ -234,7 +202,6 @@ async function handleSmartSave(tab) {
         if (!response.ok) throw new Error(`Cannot connect to Obsidian plugin (HTTP ${response.status})`);
         
         const { characters, shows } = await response.json();
-        
         // Find all matches in both lists
         const matchedCharacterNames = findAllMatches(tab.title, characters);
         const matchedShowNames = findAllMatches(tab.title, shows);
@@ -347,7 +314,6 @@ async function handleExtraSave(tab) {
 }
 
 
-
 //save to specific note
 async function handleTargetedSave(tab, query) {
     const config = await getConfig();
@@ -393,6 +359,26 @@ async function handleTargetedSave(tab, query) {
     }
 }
 
+// Add this new function
+async function handleDeleteBookmark(tab) {
+    try {
+        const response = await fetch('http://127.0.0.1:8123/delete-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ urlToDelete: tab.url })
+        });
+        if (!response.ok) throw new Error("Plugin returned an error during deletion.");
+        const { deletedFrom } = await response.json();
+        if (deletedFrom && deletedFrom.length > 0) {
+            showNotification(tab.id, `Deleted from: ${deletedFrom.join(', ')}`, 'success');
+        } else {
+            showNotification(tab.id, `Bookmark ${tab.url} not found in any notes.`, 'warning');
+        }
+    } catch (e) {
+        console.error("Error during bookmark deletion:", e);
+        showNotification(tab.id, 'Error: Could not delete bookmark.', 'error');
+    }
+}
 
 // ===================================================================
 //
@@ -422,6 +408,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 break;
             case 'saveTargeted':
                 handleTargetedSave(tab, message.query);
+                break;
+            case 'deleteBookmark':
+                handleDeleteBookmark(tab);
                 break;
         }
     });
