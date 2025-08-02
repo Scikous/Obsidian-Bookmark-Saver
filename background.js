@@ -110,17 +110,18 @@ function findAllMatches(title, names) {
     }
     return finalMatches;
 }
-// /**
-//  * Finds the single "closest" match for a user's query, robust against
-//  * spacing and punctuation.
-//  * @param {string} query The user's typed search query.
-//  * @param {string[]} names The array of all character/show note names.
-//  * @returns {string|null} The full, original name of the best-matched note, or null.
-//  */
-
+/**
+ * Finds the single "closest" match for a user's query using a "fuzzy"
+ * string-matching algorithm that handles partial inputs ("fill-in-the-blank").
+ * @param {string} query The user's typed search query.
+ * @param {string[]} names The array of all character/show note names.
+ * @returns {string|null} The full, original name of the best-matched note, or null.
+ */
 function findClosestMatch(query, names) {
-    const canonicalQueryWords = query.toLowerCase().split(/[\p{P}\p{Z}\s]+/u).filter(Boolean);
-    if (canonicalQueryWords.length === 0) return null;
+    // 1. Create a canonical version of the user's query by removing all
+    //    punctuation, separators, and spaces. e.g., "John Smi" -> "johnsmi"
+    const canonicalQuery = query.toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '');
+    if (!canonicalQuery) return null;
 
     let scoredMatches = [];
 
@@ -131,41 +132,43 @@ function findClosestMatch(query, names) {
         if (separatorIndex !== -1) { primaryName = fullName.substring(0, separatorIndex).trim(); } else { primaryName = fullName.trim(); }
         if (!primaryName) continue;
 
+        // 2. Create canonical versions of the note's names.
+        const canonicalFullName = fullName.toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '');
+        const canonicalPrimaryName = primaryName.toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '');
+
         let score = 0;
 
-        // --- Test 1: Check against the full note name (e.g., "John Smith -- John's Adventures") ---
-        const canonicalFullNameWords = fullName.toLowerCase().split(/[\p{P}\p{Z}\s]+/u).filter(Boolean);
-        if (canonicalQueryWords.every(qWord => canonicalFullNameWords.includes(qWord))) {
-            // A match against the full name is a very strong signal.
-            // Give a higher score if the word counts are identical (an exact match).
-            score = Math.max(score, canonicalFullNameWords.length === canonicalQueryWords.length ? 3 : 2);
+        // 3. Score the match based on priority. A higher score is better.
+        if (canonicalFullName.startsWith(canonicalQuery)) {
+            // Highest priority: The query matches the start of the FULL note name.
+            // e.g., query "John Smith -- John's Adv" matches.
+            score = 3;
+        } else if (canonicalPrimaryName.startsWith(canonicalQuery)) {
+            // High priority: The query matches the start of the PRIMARY name.
+            // e.g., query "John Smi" matches.
+            score = 2;
+        } else if (canonicalFullName.includes(canonicalQuery)) {
+            // Lower priority: The query is found somewhere else inside the full name.
+            // This catches typos or partial matches in the middle.
+            score = 1;
         }
-
-        // --- Test 2: Check against just the primary name's aliases (e.g., "John Smith") ---
-        const aliases = primaryName.toLowerCase().split(',').map(a => a.trim());
-        for (const alias of aliases) {
-            const canonicalAliasWords = alias.split(/[\p{P}\p{Z}\s]+/u).filter(Boolean);
-            if (canonicalAliasWords.length === 0) continue;
-
-            if (canonicalQueryWords.every(qWord => canonicalAliasWords.includes(qWord))) {
-                // Matching the primary name is good, but less specific than the full name.
-                score = Math.max(score, canonicalAliasWords.length === canonicalQueryWords.length ? 2 : 1);
-            }
-        }
-
+        
         if (score > 0) {
-            scoredMatches.push({ name: fullName, score, length: fullName.length });
+            scoredMatches.push({ name: fullName, score: score, length: canonicalFullName.length });
         }
     }
 
     if (scoredMatches.length === 0) return null;
 
-    // Sort to find the best match (by score, then by length).
+    // Sort to find the best match:
+    // 1. Higher score is always better.
+    // 2. If scores are equal, a shorter name is a "closer" match.
     scoredMatches.sort((a, b) => {
-        if (a.score !== b.score) return b.score - a.score;
-        return a.length - b.length;
+        if (a.score !== b.score) return b.score - a.score; // Sort by score descending
+        return a.length - b.length;                       // Then by length ascending
     });
 
+    // The best match is the first item in the sorted list.
     return scoredMatches[0].name;
 }
 
