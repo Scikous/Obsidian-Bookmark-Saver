@@ -61,53 +61,76 @@ async function showNotification(tabId, message, type = 'success') {
 //
 // ===================================================================
 /**
- * Finds all matching note names using a strict, context-aware process.
- * A match requires BOTH a character/show name AND a source material name to be
- * present in the title, unless the note is marked with "-- OGFAV".
+ * Finds all matching note names using a strict, context-aware process. This version
+ * correctly handles order-agnostic names (e.g., "Smith John" vs "John Smith").
  * @param {string} title The page title to search within.
  * @param {string[]} names The array of all character/show note names.
  * @returns {string[]} An array of the most relevant full note names.
  */
-
 function findAllMatches(title, names) {
+    // 1. Create BOTH versions of the canonical title for different matching strategies.
     const canonicalTitleFlat = title.toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '');
     const canonicalTitleWords = title.toLowerCase().split(/[\p{P}\p{Z}\s]+/u).filter(Boolean);
+
     let finalMatches = [];
+
     for (const fullName of names) {
-        let primaryName;
         const separator = ' -- ';
         const separatorIndex = fullName.indexOf(separator);
-        if (separatorIndex !== -1) { primaryName = fullName.substring(0, separatorIndex).trim(); } else { primaryName = fullName.trim(); }
+        const primaryName = (separatorIndex !== -1 ? fullName.substring(0, separatorIndex) : fullName).trim();
+        const details = (separatorIndex !== -1 ? fullName.substring(separatorIndex + separator.length) : '').trim();
+
         if (!primaryName) continue;
-        if (fullName.toUpperCase().includes('-- OGFAV')) {
+
+        // 2. Handle the "OGFAV" exception case first.
+        if (details.toUpperCase() === 'OGFAV') {
             const aliases = primaryName.toLowerCase().split(',').map(alias => alias.trim());
             const isOgFavMatch = aliases.some(alias => {
                 if (!alias) return false;
+                // Use the correct "bag of words" check here.
                 const canonicalAliasWords = alias.split(/[\p{P}\p{Z}\s]+/u).filter(Boolean);
                 return canonicalAliasWords.length > 0 && canonicalAliasWords.every(word => canonicalTitleWords.includes(word));
             });
-            if (isOgFavMatch) finalMatches.push(fullName);
+
+            if (isOgFavMatch) {
+                finalMatches.push(fullName);
+            }
             continue;
         }
+
+        // 3. Proceed with the standard, strict matching logic.
+        
+        // A. Check for a character/show name match using the order-agnostic "bag of words" method.
         const characterAliases = primaryName.toLowerCase().split(',').map(alias => alias.trim());
         const isCharacterMatch = characterAliases.some(alias => {
             if (!alias) return false;
-            const canonicalAliasPhrase = alias.replace(/[\p{P}\p{Z}\s]/gu, '');
-            return canonicalAliasPhrase && canonicalTitleFlat.includes(canonicalAliasPhrase);
+            // THIS IS THE FIX: Tokenize the alias and check if every word exists in the tokenized title.
+            const canonicalAliasWords = alias.split(/[\p{P}\p{Z}\s]+/u).filter(Boolean);
+            return canonicalAliasWords.length > 0 && canonicalAliasWords.every(word => canonicalTitleWords.includes(word));
         });
-        if (!isCharacterMatch) continue;
-        const details = (separatorIndex !== -1 ? fullName.substring(separatorIndex + separator.length) : '').trim();
-        if (!details) continue;
+
+        if (!isCharacterMatch) {
+            continue;
+        }
+
+        // B. Check for a source material match using the order-dependent "whole phrase" method.
+        if (!details) {
+            continue;
+        }
+
         const sourceAliases = details.toLowerCase().split(',').map(alias => alias.trim());
         const isSourceMatch = sourceAliases.some(alias => {
             if (!alias) return false;
             const canonicalSourcePhrase = alias.replace(/[\p{P}\p{Z}\s]/gu, '');
             return canonicalSourcePhrase && canonicalTitleFlat.includes(canonicalSourcePhrase);
         });
+
+        // C. A final match requires BOTH conditions to be met.
         if (isCharacterMatch && isSourceMatch) {
             finalMatches.push(fullName);
         }
     }
+
     return finalMatches;
 }
 /**
