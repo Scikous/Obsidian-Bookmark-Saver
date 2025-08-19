@@ -104,11 +104,10 @@ function findAllMatches(title, names) {
         const characterAliases = primaryName.toLowerCase().split(',').map(alias => alias.trim());
         const isCharacterMatch = characterAliases.some(alias => {
             if (!alias) return false;
-            // THIS IS THE FIX: Tokenize the alias and check if every word exists in the tokenized title.
             const canonicalAliasWords = alias.split(/[\p{P}\p{Z}\s]+/u).filter(Boolean);
-            return canonicalAliasWords.length > 0 && canonicalAliasWords.every(word => canonicalTitleWords.includes(word));
+            
+            return canonicalAliasWords.length > 0 && canonicalAliasWords.every(word => canonicalTitleFlat.includes(word));
         });
-
         if (!isCharacterMatch) {
             continue;
         }
