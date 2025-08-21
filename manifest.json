@@ -14,7 +14,7 @@
   },
   "options_page": "html/options.html",
   "background": {
-    "service_worker": "background.js"
+    "scripts": ["external/browser-polyfill.min.js", "background.js"]    
   },
   "web_accessible_resources": [
     {
@@ -22,33 +22,45 @@
       "matches": [ "<all_urls>" ]
     }
   ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "@bookmark-saver-wizard",
+      "strict_min_version": "109.0"
+    }
+  },
   "commands": {
+    "_execute_action": {
+      "suggested_key": {
+	"default": "Alt+C",
+	"mac": "Alt+C"
+      }
+    },
     "save-smart": {
       "suggested_key": {
-        "default": "Ctrl+Shift+S",
-        "mac": "Command+Shift+S"
+        "default": "Ctrl+E",
+        "mac": "Command+E"
       },
       "description": "Save to Obsidian (Smart)"
     },
     "save-immediate": {
       "suggested_key": {
-        "default": "Ctrl+Shift+A",
-        "mac": "Command+Shift+A"
+        "default": "Alt+A",
+        "mac": "Command+A"
       },
       "description": "Save to Obsidian (Immediate)"
     },
 
     "save-basic": {
       "suggested_key": {
-        "default": "Alt+S",
-        "mac": "Alt+S"
+        "default": "Alt+Z",
+        "mac": "Alt+Z"
       },
       "description": "Save to Obsidian (General)"
     },
     "save-extra": {
       "suggested_key": {
-        "default": "Alt+A",
-        "mac": "Alt+A"
+        "default": "Alt+X",
+        "mac": "Alt+X"
       },
       "description": "Save to Obsidian (Extra)"
     }
