@@ -34,4 +34,4 @@ document.getElementById('noteQuery').addEventListener('keydown', (event) => {
 });
 
 // --- THE FIX: Autofocus on the input field when the popup opens ---
-document.getElementById('noteQuery').focus();
+//document.getElementById('noteQuery').focus();

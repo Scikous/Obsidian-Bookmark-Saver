@@ -12,7 +12,6 @@
     </style>
 </head>
 <body>
-    <script src="../external/browser-polyfill.min.js"></script>
     <!-- Standard Save Actions -->
     <button id="smartSaveBtn">Smart Save</button>
     <button id="immediateSaveBtn">Immediate Save</button>
@@ -25,10 +24,11 @@
     <!-- Targeted Save Section -->
     <div>
         <label for="noteQuery">Save to a specific note:</label>
-        <input type="text" id="noteQuery" placeholder="Type note name...">
+        <input type="text" id="noteQuery" placeholder="Type note name..." autofocus tabindex=1>
         <button id="targetedSaveBtn">Targeted Save</button>
     </div>
-
+    <script src="../external/browser-polyfill.min.js"></script>
     <script src="../popup.js"></script>
+
 </body>
 </html>
